@@ -35,6 +35,11 @@ body {
   height: 100%;
 }
 
+#render-root canvas {
+  display: block;
+  border-top: 1px solid rgba(146, 177, 235, 0.2);
+}
+
 #hud {
   position: absolute;
   top: 16px;
@@ -65,6 +70,14 @@ body {
   gap: 14px;
   font-size: 0.95rem;
   margin-bottom: 10px;
+}
+
+#result {
+  min-height: 1.4rem;
+  margin-bottom: 6px;
+  color: #fff1b8;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 #status {

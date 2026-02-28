@@ -16,8 +16,10 @@ app.innerHTML = `
       </p>
       <div class="bars">
         <div>Player HP <span id="player-hp">100</span></div>
+        <div>Time <span id="timer">60</span></div>
         <div>Boss HP <span id="enemy-hp">100</span></div>
       </div>
+      <div id="result"></div>
       <div id="status">Loading models...</div>
       <div class="tips">
         <strong>Moves:</strong>
@@ -49,11 +51,13 @@ app.innerHTML = `
 const statusEl = document.querySelector<HTMLElement>("#status");
 const playerHpEl = document.querySelector<HTMLElement>("#player-hp");
 const enemyHpEl = document.querySelector<HTMLElement>("#enemy-hp");
+const timerEl = document.querySelector<HTMLElement>("#timer");
+const resultEl = document.querySelector<HTMLElement>("#result");
 const renderRoot = document.querySelector<HTMLDivElement>("#render-root");
 const miniCam = document.querySelector<HTMLVideoElement>("#mini-cam");
 const miniOverlay = document.querySelector<HTMLCanvasElement>("#mini-overlay");
 
-if (!statusEl || !playerHpEl || !enemyHpEl || !renderRoot || !miniCam || !miniOverlay) {
+if (!statusEl || !playerHpEl || !enemyHpEl || !timerEl || !resultEl || !renderRoot || !miniCam || !miniOverlay) {
   throw new Error("Missing required UI elements");
 }
 
@@ -90,6 +94,8 @@ const game = new GameApp({
   statusEl,
   playerHpEl,
   enemyHpEl,
+  timerEl,
+  resultEl,
   controllerServerUrl: `${window.location.protocol}//${window.location.hostname}:${controllerPort}`,
 });
 
