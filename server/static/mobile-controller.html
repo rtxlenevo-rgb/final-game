@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+    <title>Fusion Arena Mobile Controller</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #0c1428;
+        color: #e8f0ff;
+        padding: 16px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 1.1rem;
+      }
+      .status {
+        margin-bottom: 14px;
+        color: #ffd48c;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 16px 10px;
+        font-weight: 700;
+        color: white;
+        background: #3757b5;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+      }
+      button:active {
+        transform: scale(0.98);
+      }
+      .small {
+        margin-top: 12px;
+        color: #a8c1f7;
+        font-size: 0.82rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Fusion Arena Controller</h1>
+    <div id="status" class="status">Connecting...</div>
+    <div class="grid">
+      <button id="jump">Jump</button>
+      <button id="punch">Punch</button>
+      <button id="kick">Kick</button>
+      <button id="fire">Fire Splash</button>
+      <button id="run">Run</button>
+      <button id="center">Re-center Tilt</button>
+    </div>
+    <div class="small">
+      Tilt your phone left/right to move. Grant motion permission if prompted (iOS).
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const statusEl = document.getElementById("status");
+      const roomId = "default-room";
+      const socket = io();
+      let baselineGamma = 0;
+      let latestMoveX = 0;
+      let run = false;
+
+      socket.on("connect", () => {
+        socket.emit("join", { role: "mobile", roomId });
+        statusEl.textContent = "Connected. Tilt and press buttons.";
+      });
+
+      socket.on("disconnect", () => {
+        statusEl.textContent = "Disconnected. Reconnecting...";
+      });
+
+      const send = (partial) => {
+        socket.emit("mobileInput", {
+          roomId,
+          moveX: latestMoveX,
+          run,
+          jump: false,
+          punch: false,
+          kick: false,
+          fire: false,
+          ...partial,
+        });
+      };
+
+      const pulseButton = (id, key) => {
+        const el = document.getElementById(id);
+        el.addEventListener("click", () => {
+          send({ [key]: true });
+          setTimeout(() => send({ [key]: false }), 80);
+        });
+      };
+      pulseButton("jump", "jump");
+      pulseButton("punch", "punch");
+      pulseButton("kick", "kick");
+      pulseButton("fire", "fire");
+
+      document.getElementById("run").addEventListener("click", () => {
+        run = !run;
+        send({ run });
+      });
+
+      document.getElementById("center").addEventListener("click", () => {
+        baselineGamma = 0;
+      });
+
+      const handleMotion = (event) => {
+        const gamma = event.gamma || 0;
+        if (baselineGamma === 0) baselineGamma = gamma;
+        const raw = (gamma - baselineGamma) / 25;
+        latestMoveX = Math.max(-1, Math.min(1, raw));
+        send({});
+      };
+
+      const askPermissionIfNeeded = async () => {
+        const dme = typeof DeviceMotionEvent !== "undefined" ? DeviceMotionEvent : null;
+        if (dme && typeof dme.requestPermission === "function") {
+          try {
+            const result = await dme.requestPermission();
+            if (result !== "granted") statusEl.textContent = "Motion permission denied.";
+          } catch (error) {
+            statusEl.textContent = "Motion permission error.";
+          }
+        }
+        window.addEventListener("deviceorientation", handleMotion, true);
+      };
+      askPermissionIfNeeded();
+    </script>
+  </body>
+</html>
