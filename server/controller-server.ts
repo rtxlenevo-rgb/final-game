@@ -42,6 +42,6 @@ io.on("connection", (socket) => {
 });
 
 const port = 5174;
-httpServer.listen(port, () => {
-  console.log(`Controller server running on http://localhost:${port}`);
+httpServer.listen(port, "0.0.0.0", () => {
+  console.log(`Controller server running on http://0.0.0.0:${port}`);
 });

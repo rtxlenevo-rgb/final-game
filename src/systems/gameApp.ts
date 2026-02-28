@@ -21,10 +21,22 @@ export class GameApp {
   private readonly ctx = this.canvas.getContext("2d");
   private readonly worldWidth = 1024;
   private readonly worldHeight = 576;
-  private readonly groundY = 470;
   private readonly particles: Particle[] = [];
-  private player: FighterState = createFighter(180, 370, "#5b9dff", "Player");
-  private enemy: FighterState = createFighter(780, 370, "#ff6b6b", "Enemy");
+  private readonly fireBalls: FireBall[] = [];
+  private readonly images = {
+    background: loadImage("../../../game-final-fighter/src/assets/images/background.png"),
+    shop: loadImage("../../../game-final-fighter/src/assets/images/shop.png"),
+    p1Idle: loadImage("../../../game-final-fighter/src/assets/images/p1/Idle.png"),
+    p1Run: loadImage("../../../game-final-fighter/src/assets/images/p1/Run.png"),
+    p1Jump: loadImage("../../../game-final-fighter/src/assets/images/p1/Jump.png"),
+    p1Attack: loadImage("../../../game-final-fighter/src/assets/images/p1/Attack1.png"),
+    p2Idle: loadImage("../../../game-final-fighter/src/assets/images/p2/Idle.png"),
+    p2Run: loadImage("../../../game-final-fighter/src/assets/images/p2/Run.png"),
+    p2Jump: loadImage("../../../game-final-fighter/src/assets/images/p2/Jump.png"),
+    p2Attack: loadImage("../../../game-final-fighter/src/assets/images/p2/Attack1.png"),
+  };
+  private player: FighterState = createFighter(170, 332, "Player");
+  private enemy: FighterState = createFighter(780, 332, "Enemy");
   private playerHp = 100;
   private enemyHp = 100;
   private timerSec = 60;
@@ -74,13 +86,14 @@ export class GameApp {
   }
 
   private resetRound(): void {
-    this.player = createFighter(180, 370, "#5b9dff", "Player");
-    this.enemy = createFighter(780, 370, "#ff6b6b", "Enemy");
+    this.player = createFighter(170, 332, "Player");
+    this.enemy = createFighter(780, 332, "Enemy");
     this.playerHp = 100;
     this.enemyHp = 100;
     this.timerSec = 60;
     this.roundOver = false;
     this.particles.length = 0;
+    this.fireBalls.length = 0;
     this.options.resultEl.textContent = "";
     this.options.statusEl.textContent = "Round started. Fight!";
   }
@@ -108,6 +121,7 @@ export class GameApp {
     this.updateRoundTimer(dt);
     this.updateFighters(input, dt);
     this.updateParticles(dt);
+    this.updateFireBalls(dt);
     this.renderScene();
     this.updateHud();
   };
@@ -148,8 +162,8 @@ export class GameApp {
     }
     this.player.vy += 1450 * dt;
     this.player.y += this.player.vy * dt;
-    if (this.player.y >= this.groundY - this.player.height) {
-      this.player.y = this.groundY - this.player.height;
+    if (this.player.y >= 332) {
+      this.player.y = 332;
       this.player.vy = 0;
       this.player.onGround = true;
       this.player.action = Math.abs(this.player.vx) > 80 ? "run" : "idle";
@@ -184,6 +198,16 @@ export class GameApp {
     }
     this.player.attackCooldown = kind === "fire" ? 0.9 : 0.35;
     this.player.action = kind;
+    if (kind === "fire") {
+      this.fireBalls.push({
+        x: this.player.x + this.player.facing * 30,
+        y: this.player.y + 58,
+        vx: this.player.facing * 520,
+        vy: -60,
+        radius: 20,
+        life: 1.8,
+      });
+    }
     const dist = Math.abs(this.player.x - this.enemy.x);
     if (dist <= range && this.isFacingTarget(this.player, this.enemy)) {
       this.enemyHp = Math.max(0, this.enemyHp - damage);
@@ -221,6 +245,36 @@ export class GameApp {
       p.y += p.vy * dt;
       if (p.life <= 0) {
         this.particles.splice(i, 1);
+      }
+    }
+  }
+
+  private updateFireBalls(dt: number): void {
+    for (let i = this.fireBalls.length - 1; i >= 0; i -= 1) {
+      const b = this.fireBalls[i];
+      b.life -= dt;
+      b.vy += 180 * dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      const hit = Math.abs(b.x - this.enemy.x) < 50 && Math.abs(b.y - (this.enemy.y + 52)) < 72;
+      if (hit && this.enemyHp > 0) {
+        this.enemyHp = Math.max(0, this.enemyHp - 12);
+        this.attackFlash = 1;
+        for (let j = 0; j < 28; j += 1) {
+          this.particles.push({
+            x: b.x,
+            y: b.y,
+            vx: (Math.random() - 0.5) * 300,
+            vy: (Math.random() - 0.5) * 300,
+            life: 0.3 + Math.random() * 0.4,
+            color: "#facc15",
+            radius: 2 + Math.random() * 5,
+          });
+        }
+        b.life = 0;
+      }
+      if (b.life <= 0 || b.x < -80 || b.x > this.worldWidth + 80 || b.y > this.worldHeight + 80) {
+        this.fireBalls.splice(i, 1);
       }
     }
   }
@@ -288,23 +342,36 @@ export class GameApp {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.worldWidth, this.worldHeight);
 
-    const sky = ctx.createLinearGradient(0, 0, 0, this.worldHeight);
-    sky.addColorStop(0, "#1e2e57");
-    sky.addColorStop(1, "#0a1026");
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
+    if (this.images.background.complete) {
+      ctx.drawImage(this.images.background, 0, 0, this.worldWidth, this.worldHeight);
+    } else {
+      const sky = ctx.createLinearGradient(0, 0, 0, this.worldHeight);
+      sky.addColorStop(0, "#1e2e57");
+      sky.addColorStop(1, "#0a1026");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
+    }
+    if (this.images.shop.complete) {
+      ctx.drawImage(this.images.shop, 650, 161, 295, 278);
+    }
 
-    this.drawParallaxLayer(0.15, "#2b3f78", 210);
-    this.drawParallaxLayer(0.3, "#253664", 260);
-    this.drawGround();
-
-    this.drawFighter(this.player);
-    this.drawFighter(this.enemy);
+    this.drawFighter(this.player, true);
+    this.drawFighter(this.enemy, false);
     for (const p of this.particles) {
       ctx.globalAlpha = clamp(p.life, 0, 1);
       ctx.fillStyle = p.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (const b of this.fireBalls) {
+      const g = ctx.createRadialGradient(b.x - 6, b.y - 6, 2, b.x, b.y, b.radius);
+      g.addColorStop(0, "#fff7c2");
+      g.addColorStop(0.4, "#fde047");
+      g.addColorStop(1, "#d97706");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -314,78 +381,36 @@ export class GameApp {
     }
   }
 
-  private drawParallaxLayer(speed: number, color: string, baseY: number): void {
-    if (!this.ctx) {
-      return;
-    }
-    const t = performance.now() * 0.01 * speed;
-    this.ctx.fillStyle = color;
-    for (let i = -2; i < 8; i += 1) {
-      const x = ((i * 220 - t) % 1500) - 120;
-      this.ctx.beginPath();
-      this.ctx.moveTo(x, this.worldHeight);
-      this.ctx.lineTo(x + 120, baseY);
-      this.ctx.lineTo(x + 240, this.worldHeight);
-      this.ctx.closePath();
-      this.ctx.fill();
-    }
-  }
-
-  private drawGround(): void {
+  private drawFighter(f: FighterState, isPlayer: boolean): void {
     if (!this.ctx) {
       return;
     }
     const ctx = this.ctx;
-    ctx.fillStyle = "#2f241f";
-    ctx.fillRect(0, this.groundY, this.worldWidth, this.worldHeight - this.groundY);
-    ctx.fillStyle = "#5a3c2d";
-    for (let i = 0; i < this.worldWidth; i += 42) {
-      ctx.fillRect(i, this.groundY + 10 + (i % 3), 30, 8);
-    }
-    ctx.fillStyle = "#f59e0b";
-    for (let i = 0; i < this.worldWidth; i += 170) {
-      const flicker = 4 + Math.sin((performance.now() + i) * 0.02) * 2;
-      ctx.fillRect(i + 30, this.groundY - flicker, 18, flicker);
-    }
-  }
-
-  private drawFighter(f: FighterState): void {
-    if (!this.ctx) {
-      return;
-    }
-    const ctx = this.ctx;
-    const punchBoost = f.action === "punch" ? 14 : 0;
-    const kickBoost = f.action === "kick" ? 18 : 0;
-    const fireAura = f.action === "fire";
-    const x = f.x;
-    const y = f.y;
-
-    if (fireAura) {
-      ctx.fillStyle = "rgba(255,120,80,0.25)";
-      ctx.beginPath();
-      ctx.arc(x, y + 65, 44, 0, Math.PI * 2);
-      ctx.fill();
+    const sprite = pickSprite(this.images, f.action, isPlayer);
+    const frames = pickFrames(f.action, isPlayer);
+    f.frameElapsed += 1;
+    if (f.frameElapsed % 7 === 0) {
+      f.frame = (f.frame + 1) % frames;
     }
 
-    ctx.fillStyle = f.color;
-    ctx.fillRect(x - 18, y + 24, 36, 70);
-    ctx.fillRect(x - 12, y, 24, 28);
+    const drawW = isPlayer ? 220 : 185;
+    const drawH = isPlayer ? 220 : 210;
+    const offsetX = isPlayer ? 80 : 64;
+    const offsetY = isPlayer ? 155 : 137;
 
-    const dir = f.facing;
-    ctx.fillRect(x + dir * 16, y + 36, 16 + punchBoost, 12);
-    ctx.fillRect(x + dir * 5, y + 95, 12 + kickBoost, 34);
-    ctx.fillRect(x - dir * 16 - 10, y + 36, 16, 12);
-    ctx.fillRect(x - dir * 5 - 10, y + 95, 12, 34);
+    const frameW = sprite.width > 0 ? sprite.width / frames : drawW;
+    const frameH = sprite.height > 0 ? sprite.height : drawH;
+    const srcX = Math.min(frames - 1, f.frame) * frameW;
 
-    ctx.fillStyle = "#dbeafe";
-    ctx.font = "bold 12px Segoe UI";
-    ctx.textAlign = "center";
-    ctx.fillText(f.name, x, y - 12);
-
-    if (f.action === "down") {
-      ctx.fillStyle = "rgba(220,38,38,0.85)";
-      ctx.fillText("DOWN", x, y - 30);
+    ctx.save();
+    if (f.facing === -1) {
+      ctx.translate(this.worldWidth, 0);
+      const x = this.worldWidth - f.x;
+      ctx.drawImage(sprite, srcX, 0, frameW, frameH, x - offsetX, f.y - offsetY, drawW, drawH);
+    } else {
+      ctx.drawImage(sprite, srcX, 0, frameW, frameH, f.x - offsetX, f.y - offsetY, drawW, drawH);
     }
+    ctx.restore();
   }
 
   private isFacingTarget(attacker: FighterState, target: FighterState): boolean {
@@ -401,7 +426,6 @@ export class GameApp {
 
 interface FighterState {
   name: string;
-  color: string;
   x: number;
   y: number;
   width: number;
@@ -412,6 +436,8 @@ interface FighterState {
   facing: 1 | -1;
   attackCooldown: number;
   action: "idle" | "run" | "jump" | "punch" | "kick" | "fire" | "down";
+  frame: number;
+  frameElapsed: number;
 }
 
 interface Particle {
@@ -424,10 +450,18 @@ interface Particle {
   radius: number;
 }
 
-function createFighter(x: number, y: number, color: string, name: string): FighterState {
+interface FireBall {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  life: number;
+}
+
+function createFighter(x: number, y: number, name: string): FighterState {
   return {
     name,
-    color,
     x,
     y,
     width: 36,
@@ -438,7 +472,45 @@ function createFighter(x: number, y: number, color: string, name: string): Fight
     facing: 1,
     attackCooldown: 0,
     action: "idle",
+    frame: 0,
+    frameElapsed: 0,
   };
+}
+
+function loadImage(relativePath: string): HTMLImageElement {
+  const img = new Image();
+  img.src = new URL(relativePath, import.meta.url).href;
+  return img;
+}
+
+function pickSprite(
+  images: GameApp["images"],
+  action: FighterState["action"],
+  isPlayer: boolean,
+): HTMLImageElement {
+  if (isPlayer) {
+    if (action === "run") return images.p1Run;
+    if (action === "jump") return images.p1Jump;
+    if (action === "punch" || action === "kick" || action === "fire") return images.p1Attack;
+    return images.p1Idle;
+  }
+  if (action === "run") return images.p2Run;
+  if (action === "jump") return images.p2Jump;
+  if (action === "punch" || action === "kick" || action === "fire") return images.p2Attack;
+  return images.p2Idle;
+}
+
+function pickFrames(action: FighterState["action"], isPlayer: boolean): number {
+  if (isPlayer) {
+    if (action === "run") return 8;
+    if (action === "jump") return 2;
+    if (action === "punch" || action === "kick" || action === "fire") return 6;
+    return 8;
+  }
+  if (action === "run") return 8;
+  if (action === "jump") return 2;
+  if (action === "punch" || action === "kick" || action === "fire") return 4;
+  return 4;
 }
 
 function clamp(value: number, min: number, max: number): number {

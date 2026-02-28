@@ -24,10 +24,12 @@ app.innerHTML = `
       <div class="tips">
         <strong>Moves:</strong>
         <span>Hands up = Jump</span>
+        <span>Show both open hands = Forward run</span>
+        <span>Close both hands = Backward run</span>
+        <span>Twist both hands = Golden Fire Splash</span>
         <span>Fast right hand = Punch</span>
         <span>High knee/leg = Kick</span>
-        <span>Both hands together = Fire Splash</span>
-        <span>Move body side-to-side = Run</span>
+        <span>Body side-to-side = Extra run assist</span>
       </div>
     </div>
     <div id="render-root"></div>

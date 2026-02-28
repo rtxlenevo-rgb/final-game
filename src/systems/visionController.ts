@@ -29,6 +29,8 @@ export class VisionController {
     fire: false,
   };
   private prevRightWristX = 0;
+  private prevLeftHandAngle = 0;
+  private prevRightHandAngle = 0;
   private frameCount = 0;
   private nextActionAt: Record<"jump" | "punch" | "kick" | "fire", number> = {
     jump: 0,
@@ -89,14 +91,26 @@ export class VisionController {
   }
 
   private async setupCamera(): Promise<void> {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, facingMode: "user" },
-      audio: false,
-    });
-    this.video.srcObject = stream;
-    await this.video.play();
-    this.overlay.width = this.video.videoWidth || 640;
-    this.overlay.height = this.video.videoHeight || 480;
+    const isLanHttp =
+      window.location.protocol === "http:" &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1";
+    if (isLanHttp) {
+      this.onStatus("LAN over HTTP may block camera. Prefer localhost or HTTPS.");
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480, facingMode: "user" },
+        audio: false,
+      });
+      this.video.srcObject = stream;
+      await this.video.play();
+      this.overlay.width = this.video.videoWidth || 640;
+      this.overlay.height = this.video.videoHeight || 480;
+    } catch (error) {
+      this.onStatus("Camera permission failed. For LAN, use HTTPS or run on localhost.");
+      throw error;
+    }
   }
 
   private tick(): void {
@@ -146,14 +160,36 @@ export class VisionController {
     const rightWristSpeedX = rightWrist.x - this.prevRightWristX;
     this.prevRightWristX = rightWrist.x;
 
-    const moveX = clamp((0.5 - bodyCenterX) * 4, -1, 1);
-    const run = Math.abs(moveX) > 0.2 || Math.abs(leftAnkle.y - rightAnkle.y) > 0.12;
+    const defaultMoveX = clamp((0.5 - bodyCenterX) * 4, -1, 1);
     const handsUp = leftWrist.y < nose.y - 0.05 && rightWrist.y < nose.y - 0.05;
     const kickPose = leftAnkle.y < leftKnee.y - 0.06 || rightAnkle.y < rightKnee.y - 0.06;
     const punchPose = Math.abs(rightWristSpeedX) > 0.08 && shoulderSpan > 0.1;
-    const firePose = wristDist < 0.08 && Math.abs(leftWrist.y - rightWrist.y) < 0.05;
+    const handLandmarks = hand.landmarks ?? [];
+    const leftHand = handLandmarks[0];
+    const rightHand = handLandmarks[1];
+    const leftOpen = leftHand ? this.isHandOpen(leftHand) : false;
+    const rightOpen = rightHand ? this.isHandOpen(rightHand) : false;
+    const handsVisible = Boolean(leftHand && rightHand);
 
-    const handCount = hand.landmarks?.length ?? 0;
+    // Requested mapping:
+    // - showing both hands (open palms) => forward run
+    // - both hands close => backward run
+    let moveX = defaultMoveX;
+    let run = Math.abs(defaultMoveX) > 0.2 || Math.abs(leftAnkle.y - rightAnkle.y) > 0.12;
+    if (handsVisible && leftOpen && rightOpen) {
+      moveX = 0.85;
+      run = true;
+    } else if (handsVisible && !leftOpen && !rightOpen) {
+      moveX = -0.85;
+      run = true;
+    }
+
+    // Requested mapping:
+    // - twisting both hands at same time => fire splash
+    const twistPose = handsVisible && this.isTwoHandTwist(leftHand, rightHand) && wristDist < 0.35;
+    const firePose = twistPose || (wristDist < 0.08 && Math.abs(leftWrist.y - rightWrist.y) < 0.05);
+
+    const handCount = handLandmarks.length;
     const confidentHands = handCount >= 1;
 
     this.state = {
@@ -164,6 +200,34 @@ export class VisionController {
       kick: this.cooldownTrigger("kick", kickPose, now, 350),
       fire: confidentHands && this.cooldownTrigger("fire", firePose, now, 900),
     };
+  }
+
+  private isHandOpen(hand: { x: number; y: number; z: number }[]): boolean {
+    if (hand.length < 21) {
+      return false;
+    }
+    const wrist = hand[0];
+    const palm = distance2D(wrist.x, wrist.y, hand[9].x, hand[9].y) || 0.01;
+    const fingerTips = [8, 12, 16, 20];
+    let total = 0;
+    for (const tip of fingerTips) {
+      total += distance2D(wrist.x, wrist.y, hand[tip].x, hand[tip].y) / palm;
+    }
+    const openness = total / fingerTips.length;
+    return openness > 1.7;
+  }
+
+  private isTwoHandTwist(
+    leftHand: { x: number; y: number; z: number }[],
+    rightHand: { x: number; y: number; z: number }[],
+  ): boolean {
+    const leftAngle = Math.atan2(leftHand[8].y - leftHand[0].y, leftHand[8].x - leftHand[0].x);
+    const rightAngle = Math.atan2(rightHand[8].y - rightHand[0].y, rightHand[8].x - rightHand[0].x);
+    const deltaLeft = normalizeAngle(leftAngle - this.prevLeftHandAngle);
+    const deltaRight = normalizeAngle(rightAngle - this.prevRightHandAngle);
+    this.prevLeftHandAngle = leftAngle;
+    this.prevRightHandAngle = rightAngle;
+    return Math.abs(deltaLeft) > 0.35 && Math.abs(deltaRight) > 0.35 && Math.sign(deltaLeft) !== Math.sign(deltaRight);
   }
 
   private cooldownTrigger(
@@ -215,4 +279,11 @@ function distance2D(ax: number, ay: number, bx: number, by: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeAngle(rad: number): number {
+  let value = rad;
+  while (value > Math.PI) value -= Math.PI * 2;
+  while (value < -Math.PI) value += Math.PI * 2;
+  return value;
 }
